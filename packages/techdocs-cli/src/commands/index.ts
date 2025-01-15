@@ -70,6 +70,16 @@ export function registerCommands(program: Command) {
       'Attempt to ensure an index.md exists falling back to using <docs-dir>/README.md or README.md in case a default <docs-dir>/index.md is not provided.',
       false,
     )
+    .option(
+      '--defaultPlugin [defaultPlugins...]',
+      'Plugins which should be added automatically to the mkdocs.yaml file',
+      [],
+    )
+    .option(
+      '--runAsDefaultUser',
+      'Bypass setting the container user as the same user and group id as host for Linux and MacOS',
+      false,
+    )
     .alias('build')
     .action(lazy(() => import('./generate/generate').then(m => m.default)));
 
@@ -187,6 +197,10 @@ export function registerCommands(program: Command) {
       'Optional sub-directory to store files in Amazon S3',
     )
     .option(
+      '--awsMaxAttempts <AWS MAX ATTEMPTS>',
+      'Optional maximum number of retries for AWS S3 operations. If not specified, default value of 3 is used.',
+    )
+    .option(
       '--osCredentialId <OPENSTACK SWIFT APPLICATION CREDENTIAL ID>',
       '(Required for OpenStack) specify when --publisher-type openStackSwift',
     )
@@ -279,6 +293,25 @@ export function registerCommands(program: Command) {
       '--preview-app-port <PORT>',
       'Port for the preview app to be served on',
       defaultPreviewAppPort,
+    )
+    .option(
+      '-c, --mkdocs-config-file-name <FILENAME>',
+      'Mkdocs config file name',
+    )
+    .option(
+      '--mkdocs-parameter-clean',
+      'Pass "--clean" parameter to mkdocs server running in containerized environment',
+      false,
+    )
+    .option(
+      '--mkdocs-parameter-dirtyreload',
+      'Pass "--dirtyreload" parameter to mkdocs server running in containerized environment',
+      false,
+    )
+    .option(
+      '--mkdocs-parameter-strict',
+      'Pass "--strict" parameter to mkdocs server running in containerized environment',
+      false,
     )
     .hook('preAction', command => {
       if (

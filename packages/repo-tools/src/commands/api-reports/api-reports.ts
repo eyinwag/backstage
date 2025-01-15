@@ -15,16 +15,16 @@
  */
 
 import { OptionValues } from 'commander';
-import fs from 'fs-extra';
 import {
-  createTemporaryTsConfig,
+  buildDocs,
   categorizePackageDirs,
+  createTemporaryTsConfig,
   runApiExtraction,
   runCliExtraction,
-  buildDocs,
 } from './api-extractor';
-import { findPackageDirs, paths as cliPaths } from '../../lib/paths';
+import { paths as cliPaths, resolvePackagePaths } from '../../lib/paths';
 import { generateTypeDeclarations } from './generateTypeDeclarations';
+import { runSqlExtraction } from './sql-reports';
 
 type Options = {
   ci?: boolean;
@@ -49,10 +49,12 @@ export const buildApiReports = async (paths: string[] = [], opts: Options) => {
   const omitMessages = parseArrayOption(opts.omitMessages);
 
   const isAllPackages = !paths?.length;
-  const selectedPaths = isAllPackages
-    ? await getWorkspacePackagePathPatterns()
-    : paths;
-  const selectedPackageDirs = await findPackageDirs(selectedPaths);
+
+  const selectedPackageDirs = await resolvePackagePaths({
+    paths,
+    include: opts.include,
+    exclude: opts.exclude,
+  });
 
   if (isAllPackages && !isCiBuild && !isDocsBuild) {
     console.log('');
@@ -78,9 +80,8 @@ export const buildApiReports = async (paths: string[] = [], opts: Options) => {
     await generateTypeDeclarations(tsconfigFilePath);
   }
 
-  const { tsPackageDirs, cliPackageDirs } = await categorizePackageDirs(
-    selectedPackageDirs,
-  );
+  const { tsPackageDirs, cliPackageDirs, sqlPackageDirs } =
+    await categorizePackageDirs(selectedPackageDirs);
 
   if (tsPackageDirs.length > 0) {
     console.log('# Generating package API reports');
@@ -94,10 +95,19 @@ export const buildApiReports = async (paths: string[] = [], opts: Options) => {
       validateReleaseTags: opts.validateReleaseTags,
     });
   }
+
   if (cliPackageDirs.length > 0) {
     console.log('# Generating package CLI reports');
     await runCliExtraction({
       packageDirs: cliPackageDirs,
+      isLocalBuild: !isCiBuild,
+    });
+  }
+
+  if (sqlPackageDirs.length > 0 && opts.sqlReports) {
+    console.log('# Generating package SQL reports');
+    await runSqlExtraction({
+      packageDirs: sqlPackageDirs,
       isLocalBuild: !isCiBuild,
     });
   }
@@ -110,26 +120,6 @@ export const buildApiReports = async (paths: string[] = [], opts: Options) => {
     });
   }
 };
-
-/**
- * Retrieves the list of package names in the "workspaces" field of the `package.json` file in the current workspace root.
- *
- * If the file does not exist, or the "workspaces" field is not present, returns `undefined`.
- *
- * @returns {Promise<string[] | undefined>} The list of package names, or `undefined` if not found.
- */
-async function getWorkspacePackagePathPatterns() {
-  const pkgJson = await fs
-    .readJson(cliPaths.resolveTargetRoot('package.json'))
-    .catch(error => {
-      if (error.code === 'ENOENT') {
-        return undefined;
-      }
-      throw error;
-    });
-  const workspaces = pkgJson?.workspaces?.packages;
-  return workspaces;
-}
 
 /**
  * Splits the input string on comma, and returns an array of the resulting substrings.
@@ -149,5 +139,10 @@ async function getWorkspacePackagePathPatterns() {
  * // returns []
  */
 function parseArrayOption(value: string | undefined) {
-  return value ? value.split(',').map(s => s.trim()) : [];
+  return value
+    ? value
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean)
+    : [];
 }
